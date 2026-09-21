@@ -5,4 +5,5 @@ index/
 
 # Local agent-harness files (generated per machine, not part of this project)
 AGENT.md
+AGENTS.md
 CLAUDE.md
