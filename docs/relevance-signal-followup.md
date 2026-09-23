@@ -272,3 +272,39 @@ names), (1) likely captures most of the value.
 Either way the framing to keep: the gate should fire on **absent identifying
 terms**, not absent terms. The first handover collapsed those two and this
 finding is what exposed it.
+
+## Partial matches (2026-09-23)
+
+**Finding.** A query whose one distinctive word is absent from the corpus, while its
+ordinary words are present, came back `STRONG`: "sourdough starter feeding" (absent
+`sourdough`, absent_mass 0.389, z 4.33), "snowboard binding angles" (0.39, z 4.17),
+"purple giraffe tax refund" (0.34, z 3.28). One absent term out of three or four holds
+about a third of the IDF mass, under the 0.5 gate, and the embedding always finds a
+nearest chunk several σ above background. Measured on three sets against a personal
+corpus of ~430 notes: 25 answerable questions with known answer files, 4 questions with
+no answer in the corpus, 25 unrelated nonsense queries. The z ranges of real paraphrase
+hits (3.75–5.4) and of these partial matches (3.3–4.4) overlap, so no z threshold
+separates them.
+
+**Options tried on those sets** (false STRONG out of 29 no-answer + nonsense; real hits
+that stay STRONG out of 23):
+
+| Rule | False STRONG | Hits kept STRONG |
+|---|---|---|
+| Unchanged | 8 | 23 |
+| Gate at absent_mass ≥ 0.3 → `WEAK` | 4 | 23 |
+| **Any absent term caps at `MODERATE`** | **3** | **23** |
+| Also require coverage ≥ 0.5 for `STRONG` | 0 | 18 |
+
+The coverage rule removes every false `STRONG` but demotes five real hits, all
+paraphrases where the answer shares few words with the question, which is the case the
+vector half of the search exists for. So it was rejected.
+
+**Change.** Any corpus-absent term caps the label at `MODERATE`; the 0.5 gate to `WEAK`
+stays. It changes the label only, never the results or their order. Cost: a genuine hit
+phrased with a word the corpus never uses (the `categorizing` case above, or a typo) now
+reads `MODERATE`. That is the honest label for it: the tool can't tell that case from a
+partial match without the identifying-term signal discussed above, which remains the
+better long-term fix. Left unfixed: queries whose every word occurs somewhere in the
+corpus in unrelated places ("piano tuning pitch fork", all four words present) still
+read `STRONG`; 3 of 29 in the measurement.

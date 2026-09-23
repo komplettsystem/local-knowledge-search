@@ -106,6 +106,10 @@ or `coverage >= 60%`), `WEAK` requires both signals to be decisively low (or
 the corpus-absent-terms gate above), and everything in between is reported
 as `MODERATE` ("ambiguous — read the chunk yourself") rather than forced
 toward a confident-sounding verdict the numbers don't actually support.
+Any corpus-absent query term also caps the header at `MODERATE`, even below
+the 58%-style gate: a query whose one distinctive word is missing can still
+match its ordinary words somewhere, well above background (see
+`docs/relevance-signal-followup.md`, "Partial matches").
 
 ## Files
 

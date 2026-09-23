@@ -72,7 +72,9 @@ def _verdict(z_best: float, coverage_best: float, absent_mass: float) -> str:
     if absent_mass >= ABSENT_MASS_WEAK:
         return "WEAK"
     if z_best >= Z_STRONG or coverage_best >= COVERAGE_STRONG:
-        return "STRONG"
+        # Any corpus-absent term caps the label: the best chunk may match only the
+        # query's common words. See docs/relevance-signal-followup.md, "Partial matches".
+        return "MODERATE" if absent_mass > 0 else "STRONG"
     if z_best < Z_WEAK and coverage_best < COVERAGE_WEAK:
         return "WEAK"
     return "MODERATE"

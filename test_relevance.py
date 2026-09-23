@@ -45,16 +45,24 @@ def test_verdict_absent_mass_gate_forces_weak():
     assert server._verdict(z_best=5.0, coverage_best=0.9, absent_mass=0.7) == "WEAK"
 
 
-def test_verdict_absent_mass_below_gate_unaffected():
-    # Low absent mass: behaves exactly as before.
-    assert server._verdict(z_best=5.0, coverage_best=0.9, absent_mass=0.1) == "STRONG"
+def test_verdict_no_absent_terms_unaffected():
+    # No corpus-absent terms: z and coverage decide, as before.
+    assert server._verdict(z_best=5.0, coverage_best=0.9, absent_mass=0.0) == "STRONG"
+    assert server._verdict(z_best=0.2, coverage_best=0.1, absent_mass=0.0) == "WEAK"
+    assert server._verdict(z_best=2.0, coverage_best=0.4, absent_mass=0.0) == "MODERATE"
+
+
+def test_verdict_any_absent_term_caps_at_moderate():
+    # A query word the corpus never contains means the nearest chunk may match
+    # only the query's ordinary words (e.g. "sourdough starter feeding"), so a
+    # high z or coverage can't be read as STRONG. Label only: results unchanged.
+    assert server._verdict(z_best=5.0, coverage_best=0.9, absent_mass=0.1) == "MODERATE"
     assert server._verdict(z_best=0.2, coverage_best=0.1, absent_mass=0.1) == "WEAK"
-    assert server._verdict(z_best=2.0, coverage_best=0.4, absent_mass=0.1) == "MODERATE"
 
 
 def test_verdict_gate_boundary():
     assert server._verdict(z_best=5.0, coverage_best=0.9, absent_mass=0.5) == "WEAK"
-    assert server._verdict(z_best=5.0, coverage_best=0.9, absent_mass=0.49) == "STRONG"
+    assert server._verdict(z_best=5.0, coverage_best=0.9, absent_mass=0.49) == "MODERATE"
 
 
 def test_live_index_confirmed_miss_is_weak():
@@ -96,7 +104,8 @@ def test_z_and_coverage_best_are_independent_maxima():
 if __name__ == "__main__":
     tests = [
         test_verdict_absent_mass_gate_forces_weak,
-        test_verdict_absent_mass_below_gate_unaffected,
+        test_verdict_no_absent_terms_unaffected,
+        test_verdict_any_absent_term_caps_at_moderate,
         test_verdict_gate_boundary,
         test_live_index_confirmed_miss_is_weak,
         test_z_and_coverage_best_are_independent_maxima,
