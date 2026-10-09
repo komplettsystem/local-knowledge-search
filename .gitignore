@@ -7,3 +7,6 @@ index/
 AGENT.md
 AGENTS.md
 CLAUDE.md
+
+# Per-machine list of folders left out of the index (see lib.py)
+exclude.conf

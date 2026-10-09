@@ -120,6 +120,7 @@ scattered across unrelated notes reached `z` 3.4–4.7 with no answer in the cor
 |---|---|
 | `lib.py` | Chunking, tokenizing, the BM25 implementation, corpus loading, index I/O helpers |
 | `build_index.py` | Walks the content folder, chunks + embeds everything (incrementally), writes `index/records.json` and `index/embeddings.npy` |
+| `exclude.conf` | Optional, per machine, git-ignored: folders under the content root to leave out of the index, one path prefix per line |
 | `server.py` | MCP stdio server exposing one tool, `search_local_docs(query, top_k=8)` |
 | `test_relevance.py` | Plain-assertion tests: verdict logic (runs anywhere) plus two live-index tests that read their queries from environment variables (see the file header) and skip without them |
 | `docs/relevance-signal-followup.md` | Design log for the relevance verdict: a measured miss, the diagnosis, the fix, and one change reverted on evidence |

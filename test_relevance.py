@@ -24,7 +24,10 @@ environment variables and they are skipped when those are unset:
   LKS_FUSION_QUERY       a query whose best-z chunk is not ranked first by RRF
 """
 import os
+import tempfile
+from pathlib import Path
 
+import lib
 import server
 
 
@@ -75,6 +78,18 @@ def test_verdict_gate_boundary():
     assert server._verdict(z_best=5.0, coverage_best=0.9, absent_mass=0.49) == "MODERATE"
 
 
+def test_exclude_conf_skips_listed_folders():
+    with tempfile.TemporaryDirectory() as d:
+        conf = Path(d) / "exclude.conf"
+        conf.write_text("# old notes\nnotes/retired/\n\n")
+        prefixes = lib.load_excludes(conf)
+        assert prefixes == ["notes/retired/"]
+        assert lib.is_excluded("notes/retired/a.md", prefixes)
+        assert not lib.is_excluded("notes/retired-plan.md", prefixes)
+        assert not lib.is_excluded("notes/a.md", prefixes)
+        assert lib.load_excludes(Path(d) / "missing.conf") == []
+
+
 def test_live_index_confirmed_miss_is_weak():
     miss_query, absent, hit_query = _env("LKS_MISS_QUERY", "LKS_MISS_ABSENT_TERMS", "LKS_HIT_QUERY")
     server._load_index()
@@ -118,6 +133,7 @@ if __name__ == "__main__":
         test_verdict_any_absent_term_caps_at_moderate,
         test_verdict_z_alone_needs_some_coverage_for_strong,
         test_verdict_gate_boundary,
+        test_exclude_conf_skips_listed_folders,
         test_live_index_confirmed_miss_is_weak,
         test_z_and_coverage_best_are_independent_maxima,
     ]

@@ -19,6 +19,11 @@ CONTENT_ROOT = Path(
 INDEX_DIR = Path(os.environ.get("LOCAL_SEARCH_INDEX_DIR", str(PROJECT_ROOT / "index")))
 INDEX_DIR.mkdir(parents=True, exist_ok=True)
 
+# Folders under CONTENT_ROOT to leave out of the index: one path prefix per
+# line, relative to CONTENT_ROOT (e.g. "notes/archive/"); "#" comments and
+# blank lines ignored. Per machine, so git-ignored; missing file = index all.
+EXCLUDE_FILE = PROJECT_ROOT / "exclude.conf"
+
 CHUNK_TARGET_CHARS = 800
 CHUNK_OVERLAP_CHARS = 100
 
@@ -61,15 +66,29 @@ def chunk_markdown(text: str) -> list[str]:
     return chunks
 
 
+def load_excludes(path: Path) -> list[str]:
+    if not path.exists():
+        return []
+    lines = (line.split("#", 1)[0].strip() for line in path.read_text().splitlines())
+    return [line for line in lines if line]
+
+
+def is_excluded(rel_path: str, prefixes: list[str]) -> bool:
+    return any(rel_path.startswith(p) for p in prefixes)
+
+
 def load_corpus() -> list[dict]:
     """Return one dict per chunk: {path, chunk_index, text, hash}."""
+    excludes = load_excludes(EXCLUDE_FILE)
     records = []
     for path in sorted(CONTENT_ROOT.rglob("*.md")):
+        rel_path = str(path.relative_to(CONTENT_ROOT))
+        if is_excluded(rel_path, excludes):
+            continue
         try:
             text = path.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
-        rel_path = str(path.relative_to(CONTENT_ROOT))
         for i, chunk in enumerate(chunk_markdown(text)):
             h = hashlib.sha256(chunk.encode("utf-8")).hexdigest()[:16]
             records.append({
