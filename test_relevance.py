@@ -60,6 +60,16 @@ def test_verdict_any_absent_term_caps_at_moderate():
     assert server._verdict(z_best=0.2, coverage_best=0.1, absent_mass=0.1) == "WEAK"
 
 
+def test_verdict_z_alone_needs_some_coverage_for_strong():
+    # Rare words from unrelated notes, every one present somewhere in the corpus:
+    # the nearest chunk sits well above background but shares about a third of
+    # the query's weight. See docs/relevance-signal-followup.md, "Coverage floor".
+    assert server._verdict(z_best=4.4, coverage_best=0.39, absent_mass=0.0) == "MODERATE"
+    assert server._verdict(z_best=4.4, coverage_best=0.45, absent_mass=0.0) == "STRONG"
+    # The coverage path to STRONG is unchanged.
+    assert server._verdict(z_best=0.5, coverage_best=0.6, absent_mass=0.0) == "STRONG"
+
+
 def test_verdict_gate_boundary():
     assert server._verdict(z_best=5.0, coverage_best=0.9, absent_mass=0.5) == "WEAK"
     assert server._verdict(z_best=5.0, coverage_best=0.9, absent_mass=0.49) == "MODERATE"
@@ -106,6 +116,7 @@ if __name__ == "__main__":
         test_verdict_absent_mass_gate_forces_weak,
         test_verdict_no_absent_terms_unaffected,
         test_verdict_any_absent_term_caps_at_moderate,
+        test_verdict_z_alone_needs_some_coverage_for_strong,
         test_verdict_gate_boundary,
         test_live_index_confirmed_miss_is_weak,
         test_z_and_coverage_best_are_independent_maxima,

@@ -102,7 +102,7 @@ that land on a topically-adjacent chunk *without* any query term being
 wholly absent from the corpus — `z`/coverage are still the only signals for
 that case, which is why the verdict keeps three tiers instead of two:
 `STRONG` requires clearing the measured hit/miss gap with margin (`z >= 3.0`
-or `coverage >= 60%`), `WEAK` requires both signals to be decisively low (or
+with `coverage >= 45%`, or `coverage >= 60%` alone), `WEAK` requires both signals to be decisively low (or
 the corpus-absent-terms gate above), and everything in between is reported
 as `MODERATE` ("ambiguous — read the chunk yourself") rather than forced
 toward a confident-sounding verdict the numbers don't actually support.
@@ -110,6 +110,9 @@ Any corpus-absent query term also caps the header at `MODERATE`, even below
 the 58%-style gate: a query whose one distinctive word is missing can still
 match its ordinary words somewhere, well above background (see
 `docs/relevance-signal-followup.md`, "Partial matches").
+The coverage floor on the `z` path exists because queries built from rare words
+scattered across unrelated notes reached `z` 3.4–4.7 with no answer in the corpus
+(see the same doc, "Coverage floor").
 
 ## Files
 

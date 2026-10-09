@@ -308,3 +308,46 @@ partial match without the identifying-term signal discussed above, which remains
 better long-term fix. Left unfixed: queries whose every word occurs somewhere in the
 corpus in unrelated places ("piano tuning pitch fork", all four words present) still
 read `STRONG`; 3 of 29 in the measurement.
+
+## Coverage floor (2026-10-09)
+
+**This reverses the rejection above.** "Also require coverage for `STRONG`" was turned down on
+2026-09-23 because it demoted real paraphrase hits. The case it would have caught was left
+unfixed at 3 of 29. A new measurement shows that case is far more common than those sets
+showed.
+
+**Finding.** A generator now builds no-answer queries from three rare words taken from three
+different projects, chosen so that no single file contains all three. Every word occurs
+somewhere in the corpus, so the absent-term signals never fire. On a gold set of 25
+answerable questions and 14 no-answer queries (4 hand-written, 10 generated), against a
+corpus of ~530 notes, 11 of the 14 read `STRONG`. They sat at z 3.4–4.7, inside the range
+of real hits (4.0–7.3), with coverage 0.30–0.40. Real hits ranged from 0.345 to 1.0.
+
+**Change.** z ≥ 3.0 gives `STRONG` only with coverage ≥ 0.45 (`Z_STRONG_MIN_COVERAGE`). The
+coverage-only path (≥ 0.6) is unchanged. Like `Z_STRONG`, 0.45 is set as margin above the
+highest no-answer coverage measured (0.395), not fitted to split it from the hits. It
+changes the label only, never the results or their order.
+
+**Effect on that gold set:**
+
+| | Before | After |
+|---|---|---|
+| No-answer queries read `STRONG` | 11 of 14 | 0 of 14 |
+| Real hits read `STRONG` | 21 of 21 | 19 of 21 |
+| Wrong-file results read `STRONG` | 3 of 4 | 2 of 4 |
+
+The two demoted hits are a paraphrase (coverage 0.345) and a cross-project question (0.39).
+The two wrong-file results still reading `STRONG` land on closely related notes.
+
+**Caveats.**
+- The generated queries sit near one-third coverage by construction, since each rare word
+  comes from a different project. "All of them drop" is partly a property of the
+  generator.
+- The two hand-written no-answer queries that read `STRONG` before are the stronger
+  evidence. They measured coverage 0.30 and 0.34, and both now read `MODERATE`.
+- 14 no-answer queries is a small set, and the margin to the lowest hit kept as `STRONG`
+  (0.47) is small.
+- No query here reaches `WEAK`. Nonsense made of real corpus words still reads `MODERATE`.
+
+**Decision.** Decided by the maintainer on 2026-10-09: of three options (this floor, adding
+the dispersion signal from #3, or growing the gold set first), take the floor now.

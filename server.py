@@ -19,8 +19,9 @@ RRF_K = 60
 TOP_N_PER_METHOD = 30
 N_RARE_TERMS = 3
 
-# Verdict thresholds. STRONG requires either signal to be decisive on its
-# own; WEAK requires both to be decisively low; anything else is MODERATE -
+# Verdict thresholds. STRONG requires coverage to be decisive on its own, or
+# z to be decisive with at least some coverage (Z_STRONG_MIN_COVERAGE below);
+# WEAK requires both to be decisively low; anything else is MODERATE -
 # the two cheap signals don't always resolve "topically adjacent but wrong"
 # from "genuinely relevant with little shared vocabulary" (see README), so
 # that ambiguous zone is reported as such rather than forced to a verdict
@@ -37,6 +38,14 @@ Z_STRONG = 3.0
 Z_WEAK = 1.0
 COVERAGE_STRONG = 0.6
 COVERAGE_WEAK = 0.25
+
+# z alone used to be enough for STRONG. Queries made of rare words from
+# unrelated notes, each word present somewhere in the corpus, reached z 3.4-4.7
+# at coverage 0.30-0.40, so 11 of 14 no-answer queries read STRONG. 0.45 is
+# margin above the highest such coverage measured (0.395), not fitted to the
+# hits; it demotes 2 of 21 hits (coverage 0.345, 0.39) to MODERATE. See
+# docs/relevance-signal-followup.md, "Coverage floor" (2026-10-09).
+Z_STRONG_MIN_COVERAGE = 0.45
 
 # A query term with zero corpus documents is close to proof the query names
 # something the corpus never covers - it must not be outvoted by common
@@ -71,7 +80,7 @@ def _load_index():
 def _verdict(z_best: float, coverage_best: float, absent_mass: float) -> str:
     if absent_mass >= ABSENT_MASS_WEAK:
         return "WEAK"
-    if z_best >= Z_STRONG or coverage_best >= COVERAGE_STRONG:
+    if (z_best >= Z_STRONG and coverage_best >= Z_STRONG_MIN_COVERAGE) or coverage_best >= COVERAGE_STRONG:
         # Any corpus-absent term caps the label: the best chunk may match only the
         # query's common words. See docs/relevance-signal-followup.md, "Partial matches".
         return "MODERATE" if absent_mass > 0 else "STRONG"
