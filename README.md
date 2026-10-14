@@ -109,10 +109,10 @@ the corpus-absent-terms gate above), and everything in between is reported
 as `MODERATE` ("ambiguous — read the chunk yourself") rather than forced
 toward a confident-sounding verdict the numbers don't actually support.
 With the reranker on, `STRONG` also needs the reranker's score for the first
-chunk to reach 4.26, and then means the first chunk very likely holds the
-answer, at least partly. On a 103-question test set this cut wrong `STRONG`
-verdicts from 25 to 8 without losing a right one; the threshold was fitted on
-part of that set, so treat it as provisional.
+chunk to reach 1.0, and then means the first chunk very likely holds the
+answer, at least partly. On a 143-question test set this cut wrong `STRONG`
+verdicts from 38 to 21 and raised right ones from 34 to 38; the cut-off was
+fitted on that set, so treat it as provisional.
 
 **Reranking** (`server.py`, unlike the signals above, adds a fitted constant
 and latency): the fused top 20 chunks are scored by a small local

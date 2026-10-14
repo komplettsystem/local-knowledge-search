@@ -358,52 +358,64 @@ the dispersion signal from #3, or growing the gold set first), take the floor no
 the no-answer ones are realistic near misses: a decision never made, a detail nobody wrote
 down, a swapped name. `STRONG` was then redefined to mean the first result holds the answer,
 at least partly; a result that is only on the topic doesn't count. Measured that way, 25 of
-48 `STRONG` verdicts were wrong. 13 of those were ranking failures: a chunk holding the
-answer, at least partly, was returned, but below a chunk on the same topic. The other 12 had no answer anywhere
-in the set. A sweep over every threshold here (`Z_STRONG`, `Z_STRONG_MIN_COVERAGE`,
+48 `STRONG` verdicts were wrong. In 13 of them a chunk holding the answer, at least partly,
+was returned, but below a chunk on the same topic. The other 12 had no answer anywhere in the
+set. A sweep over every threshold here (`Z_STRONG`, `Z_STRONG_MIN_COVERAGE`,
 `COVERAGE_STRONG`) and over the fusion settings (`RRF_K`, `TOP_N_PER_METHOD`) found no value
 that cut wrong `STRONG`s without also cutting right ones. z and coverage measure whether a
 chunk is about the query, not whether it holds the asked fact.
 
 **Change.** A local cross-encoder (`Xenova/ms-marco-MiniLM-L-12-v2` via fastembed, 0.12 GB)
 scores the fused top 20 chunks against the query. Results are reordered by that score and
-cut to `top_k`. `STRONG` also needs the reranker's score for the first chunk to reach 4.26
-(`RERANK_STRONG_MIN`); otherwise the verdict is `MODERATE`. The thresholds for the other tiers are unchanged.
-The returned chunks are chosen from the fused top 20 by the
-reranker, so all three tiers are computed on a different set than before.
-`LKS_RERANK_MODEL=off` restores the old behavior.
+cut to `top_k`, so the returned chunks, and all three verdict tiers computed on them, can
+differ from before. `STRONG` also needs the reranker's score for the first chunk to reach 1.0
+(`RERANK_STRONG_MIN`); otherwise the verdict is `MODERATE`. The thresholds for the other tiers
+are unchanged. `LKS_RERANK_MODEL=off` restores the old behavior.
 
-**How it was tested.** The questions were split in two with a fixed seed: 67 to pick the model
-and the threshold, 36 held back. All runs used one frozen copy of the index. Five models were
-compared on the 67. The held-back 36 were scored three times in all: once for the first model
-tried, and once each for the two best on the 67. The multilingual model `jina-reranker-v2-base`
-did slightly better on the 67 but lost right `STRONG`s on the 36. `bge-reranker-base` did worse
-than the small MiniLM models.
+**How the model was picked.** The 103 questions were split with a fixed seed: 67 to pick the
+model and a first cut-off, 36 held back. All runs used one frozen copy of the index. Of five
+models compared on the 67, the two small MiniLM ones did best; `bge-reranker-base` did worse,
+and the multilingual `jina-reranker-v2-base` lost right `STRONG`s on the held-back 36. The
+first cut-off, 4.26, cut wrong `STRONG`s from 25 to 8 on the 103 without losing a right one.
 
-**Effect on the whole set** (frozen index, 103 questions):
+**How it was checked.** A pass mark was written down before a fresh batch existed: 40 new
+questions (22 written as answerable, 18 as near misses) from files no earlier question used, labelled the
+same way, with 7 labels checked blind by the maintainer. On that batch the reranker cut the wrong
+`STRONG`s from 13 to 5, but also the right ones from 11 to 7. Every lost one had the right
+file first, with a reranker score between 1.3 and 2.6: the cut-off was too strict, not the
+ranking wrong. Under the pass mark that meant refitting the cut-off on all 143 questions:
 
-| | Before | After |
+| Cut-off | All 143: right / wrong `STRONG` | Fresh 40: right / wrong |
 |---|---|---|
-| `STRONG` right (first result holds the answer) | 23 | 23 |
-| `STRONG` wrong | 25 | 8 |
-| Answer ranked first (60 answerable) | 0.57 | 0.72 |
-| Answer in the first 3 | 0.87 | 0.90 |
-| Answer in the first 5 | 0.92 | 0.93 |
-| Search time, median / slowest (one run) | 14 / 25 ms | 565 / 1,148 ms |
+| Reranker off | 34 / 38 | 11 / 13 |
+| None (reorder only) | 41 / 28 | 11 / 11 |
+| **1.0** (chosen) | **38 / 21** | **11 / 6** |
+| 2.0 | 35 / 18 | 9 / 6 |
+| 4.26 (first fit) | 30 / 13 | 7 / 5 |
+
+1.0 is the strictest value that keeps every right `STRONG` on the fresh questions; 1.0 and
+1.25 score the same.
+
+**Effect on all 143 questions** (frozen index):
+
+| | Reranker off | Reranker on |
+|---|---|---|
+| `STRONG` right (first result holds the answer) | 34 | 38 |
+| `STRONG` wrong | 38 | 21 |
+| Answer ranked first (81 answerable) | 0.59 | 0.74 |
+| Answer in the first 3 | 0.85 | 0.91 |
+| Answer in the first 5 | 0.93 | 0.94 |
+| Search time, median / slowest (one run of 103 queries) | 14 / 25 ms | 565 / 1,148 ms |
 
 **Caveats.**
-- 4.26 was fitted on the 67, unlike `Z_STRONG` and the coverage floor, which are margins above
-  a measured case. The held-back part has only 15 `STRONG` verdicts before the change
-  and 12 after. Fresh questions are the
-  real test.
-- The model was trained on English. On the 17 questions about non-English notes it still
-  helped, but less: wrong `STRONG`s 7 -> 4, against 18 -> 4 on the rest. 17 questions is too few
-  to conclude more.
-- 35 of the 60 answerable questions read `MODERATE`. This change doesn't fix that.
-- No question reaches `WEAK` yet.
-- Search is about 40 times slower. That's fine for an agent waiting on a tool call, and it
-  undoes the "milliseconds" claim in the README.
+- 1.0 is fitted on every question there is, unlike `Z_STRONG` and the coverage floor, which are
+  margins above a measured case. No unseen question has tested it yet; the next batch will.
+- The model was trained on English. On the 29 questions about non-English notes it barely
+  helps: wrong `STRONG`s 12 -> 9, right 6 -> 6, against 26 -> 12 and 28 -> 32 on the rest.
+  A multilingual model may do better there; it hasn't been tested on those questions alone.
+- 38 of the 81 answerable questions read `MODERATE`, and no question reaches `WEAK`.
+- Search is about 40 times slower. That's fine for an agent waiting on a tool call.
 
-**Decision.** Decided by the maintainer on 2026-10-14: use the 0.12 GB model, which keeps
-every right `STRONG`, rather than the 0.08 GB one (29 right, 15 wrong). Results that can be
-trusted matter more to him than speed.
+**Decision.** Decided by the maintainer on 2026-10-14: the 0.12 GB model rather than the
+0.08 GB one, since results that can be trusted matter more to him than speed; and, after the
+fresh batch, the cut-off 1.0.

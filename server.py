@@ -63,15 +63,17 @@ ABSENT_MASS_WEAK = 0.5
 # about the query's topic; on a gold set of 103 questions they could not tell
 # "on topic" from "holds the answer" (no threshold improved one without
 # hurting the other), while the reranker could. STRONG now also needs the
-# reranker's score for the top chunk to reach RERANK_STRONG_MIN. That value was
-# fitted on 67 of the questions and checked once on the other 36: wrong STRONGs
-# 25 -> 8, right STRONGs 23 -> 23, the answer ranked first 0.57 -> 0.72. It is a
-# fitted value, not a margin like Z_STRONG's; re-check it on fresh questions.
+# reranker's score for the top chunk to reach RERANK_STRONG_MIN. A first value
+# (4.26), fitted on 67 questions, cut wrong STRONGs on 40 fresh questions but
+# also cut right ones (11 -> 7). Refitted on all 143: 1.0 is the strictest value
+# that kept every right STRONG on the fresh ones (1.0 and 1.25 score the same).
+# On all 143: right STRONGs 34 -> 38, wrong 38 -> 21. It is a fitted value, not
+# a margin like Z_STRONG's, and no unseen question has tested it yet.
 # See docs/relevance-signal-followup.md, "Reranker". Set LKS_RERANK_MODEL=off to
 # turn reranking off (the verdict then works as before).
 RERANK_MODEL = os.environ.get("LKS_RERANK_MODEL", "Xenova/ms-marco-MiniLM-L-12-v2")
 RERANK_CANDIDATES = 20
-RERANK_STRONG_MIN = 4.26
+RERANK_STRONG_MIN = 1.0
 
 mcp = FastMCP("local-knowledge-search")
 
