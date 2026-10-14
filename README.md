@@ -5,7 +5,7 @@
 A small, self-contained hybrid (BM25 + vector) search engine over a folder of
 markdown files, exposed as an MCP server. No Docker, no database, no LLM
 calls and no network calls at query time — everything runs in one local
-Python process, in well under a second per query (about 15 ms with the
+Python process, in about half a second per query (about 15 ms with the
 reranker turned off).
 
 ## Why this exists
@@ -109,10 +109,10 @@ the corpus-absent-terms gate above), and everything in between is reported
 as `MODERATE` ("ambiguous — read the chunk yourself") rather than forced
 toward a confident-sounding verdict the numbers don't actually support.
 With the reranker on, `STRONG` also needs the reranker's score for the first
-chunk to reach 1.0, and then means the first chunk very likely holds the
-answer, at least partly. On a 143-question test set this cut wrong `STRONG`
-verdicts from 38 to 21 and raised right ones from 34 to 38; the cut-off was
-fitted on that set, so treat it as provisional.
+chunk to reach 1.0. The first chunk then usually holds the answer, at least
+partly: on a 143-question test set `STRONG` was right 38 times and wrong 21
+times, against 34 and 38 with the reranker off. The cut-off was fitted on
+that set, so treat it as provisional.
 
 **Reranking** (`server.py`, unlike the signals above, adds a fitted constant
 and latency): the fused top 20 chunks are scored by a small local

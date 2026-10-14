@@ -85,6 +85,9 @@ def test_verdict_rerank_gate_caps_strong():
     low, high = server.RERANK_STRONG_MIN - 1, server.RERANK_STRONG_MIN + 1
     assert server._verdict(z_best=5.0, coverage_best=0.9, absent_mass=0.0, rerank_top=low) == "MODERATE"
     assert server._verdict(z_best=5.0, coverage_best=0.9, absent_mass=0.0, rerank_top=high) == "STRONG"
+    # The cut-off itself counts as clearing it.
+    assert server._verdict(z_best=5.0, coverage_best=0.9, absent_mass=0.0,
+                           rerank_top=server.RERANK_STRONG_MIN) == "STRONG"
     # Reranker off: unchanged.
     assert server._verdict(z_best=5.0, coverage_best=0.9, absent_mass=0.0, rerank_top=None) == "STRONG"
     # The gate only demotes STRONG; it never lifts or lowers the other tiers.

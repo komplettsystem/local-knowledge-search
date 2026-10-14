@@ -65,8 +65,9 @@ ABSENT_MASS_WEAK = 0.5
 # hurting the other), while the reranker could. STRONG now also needs the
 # reranker's score for the top chunk to reach RERANK_STRONG_MIN. A first value
 # (4.26), fitted on 67 questions, cut wrong STRONGs on 40 fresh questions but
-# also cut right ones (11 -> 7). Refitted on all 143: 1.0 is the strictest value
-# that kept every right STRONG on the fresh ones (1.0 and 1.25 score the same).
+# also cut right ones (11 -> 7), mostly where the right chunk was first with a
+# score of 1.3 to 2.6.
+# Refitted on all 143: 1.0, a round value below that (1.0 and 1.25 score the same).
 # On all 143: right STRONGs 34 -> 38, wrong 38 -> 21. It is a fitted value, not
 # a margin like Z_STRONG's, and no unseen question has tested it yet.
 # See docs/relevance-signal-followup.md, "Reranker". Set LKS_RERANK_MODEL=off to
@@ -261,9 +262,9 @@ def search_local_docs(query: str, top_k: int = 8) -> str:
     nothing is filtered out, including weak matches, so a "WEAK" or
     "MODERATE" verdict means judge the chunks skeptically, not that
     anything was hidden. With the local reranker on (the default), results
-    are ordered by it, and "STRONG" means the first chunk very likely holds
-    the answer, at least partly; a chunk that is only on the topic reads
-    "MODERATE"."""
+    are ordered by it, and "STRONG" means the first chunk usually holds the
+    answer, at least partly (about 2 times in 3 on the test set); a chunk
+    that is only on the topic is more likely to read "MODERATE"."""
     out = _search(query, top_k)
     results = out["results"]
     if not results:
@@ -289,7 +290,7 @@ def search_local_docs(query: str, top_k: int = 8) -> str:
             f'{out["absent_terms"]} ({out["absent_mass"]*100:.0f}% of query IDF mass)'
         )
     if out["verdict"] == "STRONG" and out["rerank_top"] is not None:
-        header += "\n(the first chunk very likely holds the answer, at least partly - still read it)"
+        header += "\n(the first chunk usually holds the answer, at least partly - about 2 in 3 on the test set; still read it)"
     elif out["verdict"] == "WEAK":
         header += "\n(corpus likely contains little or nothing on this topic - all results still shown below)"
     elif out["verdict"] == "MODERATE":

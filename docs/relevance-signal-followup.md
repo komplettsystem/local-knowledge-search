@@ -374,16 +374,17 @@ are unchanged. `LKS_RERANK_MODEL=off` restores the old behavior.
 
 **How the model was picked.** The 103 questions were split with a fixed seed: 67 to pick the
 model and a first cut-off, 36 held back. All runs used one frozen copy of the index. Of five
-models compared on the 67, the two small MiniLM ones did best; `bge-reranker-base` did worse,
-and the multilingual `jina-reranker-v2-base` lost right `STRONG`s on the held-back 36. The
+models compared on the 67, the two small MiniLM ones did best when only reordering. With a
+cut-off, the multilingual `jina-reranker-v2-base` scored slightly higher on the 67 but lost
+right `STRONG`s on the held-back 36; `bge-reranker-base` did worse than both. The
 first cut-off, 4.26, cut wrong `STRONG`s from 25 to 8 on the 103 without losing a right one.
 
 **How it was checked.** A pass mark was written down before a fresh batch existed: 40 new
-questions (22 written as answerable, 18 as near misses) from files no earlier question used, labelled the
-same way, with 7 labels checked blind by the maintainer. On that batch the reranker cut the wrong
-`STRONG`s from 13 to 5, but also the right ones from 11 to 7. Every lost one had the right
-file first, with a reranker score between 1.3 and 2.6: the cut-off was too strict, not the
-ranking wrong. Under the pass mark that meant refitting the cut-off on all 143 questions:
+questions from files no earlier question used (22 written as answerable, 21 of them answerable
+after labelling; 18 as near misses), labelled the same way, with 7 labels checked blind by the
+maintainer. On that batch the reranker cut the wrong `STRONG`s from 13 to 5, but also the
+right ones from 11 to 7 (5 lost, 1 gained). In 4 of the 5 lost, the right file was still first,
+with a reranker score between 1.3 and 2.6: the cut-off was too strict, not the ranking wrong. Under the pass mark that meant refitting the cut-off on all 143 questions:
 
 | Cut-off | All 143: right / wrong `STRONG` | Fresh 40: right / wrong |
 |---|---|---|
@@ -393,8 +394,8 @@ ranking wrong. Under the pass mark that meant refitting the cut-off on all 143 q
 | 2.0 | 35 / 18 | 9 / 6 |
 | 4.26 (first fit) | 30 / 13 | 7 / 5 |
 
-1.0 is the strictest value that keeps every right `STRONG` on the fresh questions; 1.0 and
-1.25 score the same.
+The lowest of those 4 scores was 1.3. 1.0 is a round value below
+it; 1.0 and 1.25 score the same on all 143.
 
 **Effect on all 143 questions** (frozen index):
 
