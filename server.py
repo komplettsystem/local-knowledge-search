@@ -4,6 +4,7 @@ no LLM calls, no network calls, no Docker. Rebuild the index with
 build_index.py after the mirror changes; this process just serves queries
 against whatever index is on disk at startup.
 """
+import os
 import sys
 from pathlib import Path
 
@@ -56,6 +57,22 @@ Z_STRONG_MIN_COVERAGE = 0.45
 # (see the follow-up doc's status section), but not yet crossing it.
 ABSENT_MASS_WEAK = 0.5
 
+# Cross-encoder reranking: the fused top RERANK_CANDIDATES chunks are scored by
+# a small local model that reads the query and each chunk together, and the
+# results are reordered by that score. z and coverage say whether a chunk is
+# about the query's topic; on a gold set of 103 questions they could not tell
+# "on topic" from "holds the answer" (no threshold improved one without
+# hurting the other), while the reranker could. STRONG now also needs the
+# reranker's score for the top chunk to reach RERANK_STRONG_MIN. That value was
+# fitted on 67 of the questions and checked once on the other 36: wrong STRONGs
+# 25 -> 8, right STRONGs 23 -> 23, the answer ranked first 0.57 -> 0.72. It is a
+# fitted value, not a margin like Z_STRONG's; re-check it on fresh questions.
+# See docs/relevance-signal-followup.md, "Reranker". Set LKS_RERANK_MODEL=off to
+# turn reranking off (the verdict then works as before).
+RERANK_MODEL = os.environ.get("LKS_RERANK_MODEL", "Xenova/ms-marco-MiniLM-L-12-v2")
+RERANK_CANDIDATES = 20
+RERANK_STRONG_MIN = 4.26
+
 mcp = FastMCP("local-knowledge-search")
 
 _state: dict = {}
@@ -74,19 +91,37 @@ def _load_index():
     embeddings = embeddings / norms
     bm25 = BM25([tokenize(r["text"]) for r in records])
     embedder = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
-    _state.update(records=records, embeddings=embeddings, bm25=bm25, embedder=embedder)
+    reranker = None
+    if RERANK_MODEL.lower() not in ("", "off", "none"):
+        from fastembed.rerank.cross_encoder import TextCrossEncoder
+        reranker = TextCrossEncoder(model_name=RERANK_MODEL)
+    _state.update(records=records, embeddings=embeddings, bm25=bm25, embedder=embedder, reranker=reranker)
 
 
-def _verdict(z_best: float, coverage_best: float, absent_mass: float) -> str:
+def _verdict(z_best: float, coverage_best: float, absent_mass: float, rerank_top: float | None = None) -> str:
     if absent_mass >= ABSENT_MASS_WEAK:
         return "WEAK"
     if (z_best >= Z_STRONG and coverage_best >= Z_STRONG_MIN_COVERAGE) or coverage_best >= COVERAGE_STRONG:
         # Any corpus-absent term caps the label: the best chunk may match only the
         # query's common words. See docs/relevance-signal-followup.md, "Partial matches".
-        return "MODERATE" if absent_mass > 0 else "STRONG"
+        if absent_mass > 0:
+            return "MODERATE"
+        # On topic is not the same as holding the answer: the reranker decides that.
+        if rerank_top is not None and rerank_top < RERANK_STRONG_MIN:
+            return "MODERATE"
+        return "STRONG"
     if z_best < Z_WEAK and coverage_best < COVERAGE_WEAK:
         return "WEAK"
     return "MODERATE"
+
+
+def _apply_rerank(results: list, scores: list, top_k: int) -> list:
+    """Reorder results by reranker score (ties keep the fused order), cut to top_k, renumber."""
+    order = sorted(range(len(results)), key=lambda i: -scores[i])[:top_k]
+    out = []
+    for rank, i in enumerate(order, start=1):
+        out.append({**results[i], "rank": rank, "rerank": round(float(scores[i]), 3)})
+    return out
 
 
 def _search(query: str, top_k: int) -> dict:
@@ -115,7 +150,9 @@ def _search(query: str, top_k: int) -> dict:
     for rank, idx in enumerate(vec_ranked):
         rrf_scores[idx] = rrf_scores.get(idx, 0.0) + 1.0 / (RRF_K + rank + 1)
 
-    best = sorted(rrf_scores.items(), key=lambda kv: kv[1], reverse=True)[:top_k]
+    reranker = _state.get("reranker")
+    pool = max(top_k, RERANK_CANDIDATES) if reranker else top_k
+    best = sorted(rrf_scores.items(), key=lambda kv: kv[1], reverse=True)[:pool]
 
     # Distinct query terms weighted by corpus IDF. Coverage is reported as
     # the fraction of this IDF *mass* that literally appears in a chunk -
@@ -160,6 +197,12 @@ def _search(query: str, top_k: int) -> dict:
             "rare_terms_total": rare_terms,
         })
 
+    rerank_top = None
+    if results and reranker:
+        scores = list(reranker.rerank(query, [r["content"] for r in results]))
+        results = _apply_rerank(results, scores, top_k)
+        rerank_top = float(max(scores))
+
     if results:
         # The verdict looks at the best signal anywhere in the returned set,
         # not rank 1's - RRF rank is a fusion of both methods and is not
@@ -175,7 +218,7 @@ def _search(query: str, top_k: int) -> dict:
         # false STRONG).
         z_best = max(r["z_raw"] for r in results)
         coverage_best = max(r["coverage_raw"] for r in results)
-        verdict = _verdict(z_best, coverage_best, absent_mass)
+        verdict = _verdict(z_best, coverage_best, absent_mass, rerank_top)
     else:
         z_best = 0.0
         coverage_best = 0.0
@@ -189,6 +232,7 @@ def _search(query: str, top_k: int) -> dict:
         "rare_terms": rare_terms,
         "absent_terms": absent_terms,
         "absent_mass": round(absent_mass, 3),
+        "rerank_top": round(rerank_top, 3) if rerank_top is not None else None,
         "bm25_spread": round(float(np.std([r["bm25"] for r in results])), 4) if results else 0.0,
         "cos_spread": round(float(np.std([r["cos"] for r in results])), 4) if results else 0.0,
     }
@@ -214,7 +258,10 @@ def search_local_docs(query: str, top_k: int = 8) -> str:
     background-relative z-score) for you to read and judge yourself -
     nothing is filtered out, including weak matches, so a "WEAK" or
     "MODERATE" verdict means judge the chunks skeptically, not that
-    anything was hidden."""
+    anything was hidden. With the local reranker on (the default), results
+    are ordered by it, and "STRONG" means the first chunk very likely holds
+    the answer, at least partly; a chunk that is only on the topic reads
+    "MODERATE"."""
     out = _search(query, top_k)
     results = out["results"]
     if not results:
@@ -229,12 +276,19 @@ def search_local_docs(query: str, top_k: int = 8) -> str:
         f'(rarest query terms: [{rare_label}])\n'
         f'spread across returned set: bm25 σ={out["bm25_spread"]}, cos σ={out["cos_spread"]}'
     )
+    if out["rerank_top"] is not None:
+        header += (
+            f'\nordered by local reranker; its score for the first chunk: {out["rerank_top"]:+.2f} '
+            f'(STRONG needs >= {RERANK_STRONG_MIN})'
+        )
     if out["absent_terms"]:
         header += (
             f'\n{len(out["absent_terms"])} query term(s) absent from the entire corpus: '
             f'{out["absent_terms"]} ({out["absent_mass"]*100:.0f}% of query IDF mass)'
         )
-    if out["verdict"] == "WEAK":
+    if out["verdict"] == "STRONG" and out["rerank_top"] is not None:
+        header += "\n(the first chunk very likely holds the answer, at least partly - still read it)"
+    elif out["verdict"] == "WEAK":
         header += "\n(corpus likely contains little or nothing on this topic - all results still shown below)"
     elif out["verdict"] == "MODERATE":
         header += "\n(signals are ambiguous - could be a real but loosely-worded match, or a topically adjacent false positive; read the chunks below before trusting them)"
@@ -245,7 +299,8 @@ def search_local_docs(query: str, top_k: int = 8) -> str:
         lines.append(
             f"### {r['path']} (chunk {r['chunk_index']})\n"
             f'    rank {r["rank"]} | z {r["z"]:+.1f}σ | coverage {r["coverage"]*100:.0f}% | '
-            f'rare_terms {rare_str} | bm25 {r["bm25"]} | cos {r["cos"]} | fused {r["score"]}\n'
+            f'rare_terms {rare_str} | bm25 {r["bm25"]} | cos {r["cos"]} | fused {r["score"]}'
+            + (f' | rerank {r["rerank"]}' if "rerank" in r else "") + "\n"
             f"{r['content']}"
         )
     return "\n\n---\n\n".join(lines)

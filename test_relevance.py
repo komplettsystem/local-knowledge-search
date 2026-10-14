@@ -78,6 +78,29 @@ def test_verdict_gate_boundary():
     assert server._verdict(z_best=5.0, coverage_best=0.9, absent_mass=0.49) == "MODERATE"
 
 
+def test_verdict_rerank_gate_caps_strong():
+    # STRONG also needs the reranker's score for the top chunk to clear
+    # RERANK_STRONG_MIN: a chunk on the right topic that doesn't hold the asked
+    # fact scores well on z and coverage but low on the reranker.
+    low, high = server.RERANK_STRONG_MIN - 1, server.RERANK_STRONG_MIN + 1
+    assert server._verdict(z_best=5.0, coverage_best=0.9, absent_mass=0.0, rerank_top=low) == "MODERATE"
+    assert server._verdict(z_best=5.0, coverage_best=0.9, absent_mass=0.0, rerank_top=high) == "STRONG"
+    # Reranker off: unchanged.
+    assert server._verdict(z_best=5.0, coverage_best=0.9, absent_mass=0.0, rerank_top=None) == "STRONG"
+    # The gate only demotes STRONG; it never lifts or lowers the other tiers.
+    assert server._verdict(z_best=0.2, coverage_best=0.1, absent_mass=0.0, rerank_top=high) == "WEAK"
+    assert server._verdict(z_best=2.0, coverage_best=0.4, absent_mass=0.0, rerank_top=low) == "MODERATE"
+
+
+def test_apply_rerank_reorders_and_cuts():
+    results = [{"path": p} for p in "abcd"]
+    out = server._apply_rerank(results, [0.1, 2.0, -1.0, 2.0], top_k=3)
+    # Highest score first; ties keep the fused order.
+    assert [r["path"] for r in out] == ["b", "d", "a"]
+    assert [r["rank"] for r in out] == [1, 2, 3]
+    assert [r["rerank"] for r in out] == [2.0, 2.0, 0.1]
+
+
 def test_exclude_conf_skips_listed_folders():
     with tempfile.TemporaryDirectory() as d:
         conf = Path(d) / "exclude.conf"
@@ -133,6 +156,8 @@ if __name__ == "__main__":
         test_verdict_any_absent_term_caps_at_moderate,
         test_verdict_z_alone_needs_some_coverage_for_strong,
         test_verdict_gate_boundary,
+        test_verdict_rerank_gate_caps_strong,
+        test_apply_rerank_reorders_and_cuts,
         test_exclude_conf_skips_listed_folders,
         test_live_index_confirmed_miss_is_weak,
         test_z_and_coverage_best_are_independent_maxima,

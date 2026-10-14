@@ -351,3 +351,59 @@ The two wrong-file results still reading `STRONG` land on closely related notes.
 
 **Decision.** Decided by the maintainer on 2026-10-09: of three options (this floor, adding
 the dispersion signal from #3, or growing the gold set first), take the floor now.
+
+## Reranker (2026-10-14)
+
+**Finding.** The gold set grew to 60 answerable questions and 43 no-answer questions. 29 of
+the no-answer ones are realistic near misses: a decision never made, a detail nobody wrote
+down, a swapped name. `STRONG` was then redefined to mean the first result holds the answer,
+at least partly; a result that is only on the topic doesn't count. Measured that way, 25 of
+48 `STRONG` verdicts were wrong. 13 of those were ranking failures: a chunk holding the
+answer, at least partly, was returned, but below a chunk on the same topic. The other 12 had no answer anywhere
+in the set. A sweep over every threshold here (`Z_STRONG`, `Z_STRONG_MIN_COVERAGE`,
+`COVERAGE_STRONG`) and over the fusion settings (`RRF_K`, `TOP_N_PER_METHOD`) found no value
+that cut wrong `STRONG`s without also cutting right ones. z and coverage measure whether a
+chunk is about the query, not whether it holds the asked fact.
+
+**Change.** A local cross-encoder (`Xenova/ms-marco-MiniLM-L-12-v2` via fastembed, 0.12 GB)
+scores the fused top 20 chunks against the query. Results are reordered by that score and
+cut to `top_k`. `STRONG` also needs the reranker's score for the first chunk to reach 4.26
+(`RERANK_STRONG_MIN`); otherwise the verdict is `MODERATE`. The thresholds for the other tiers are unchanged.
+The returned chunks are chosen from the fused top 20 by the
+reranker, so all three tiers are computed on a different set than before.
+`LKS_RERANK_MODEL=off` restores the old behavior.
+
+**How it was tested.** The questions were split in two with a fixed seed: 67 to pick the model
+and the threshold, 36 held back. All runs used one frozen copy of the index. Five models were
+compared on the 67. The held-back 36 were scored three times in all: once for the first model
+tried, and once each for the two best on the 67. The multilingual model `jina-reranker-v2-base`
+did slightly better on the 67 but lost right `STRONG`s on the 36. `bge-reranker-base` did worse
+than the small MiniLM models.
+
+**Effect on the whole set** (frozen index, 103 questions):
+
+| | Before | After |
+|---|---|---|
+| `STRONG` right (first result holds the answer) | 23 | 23 |
+| `STRONG` wrong | 25 | 8 |
+| Answer ranked first (60 answerable) | 0.57 | 0.72 |
+| Answer in the first 3 | 0.87 | 0.90 |
+| Answer in the first 5 | 0.92 | 0.93 |
+| Search time, median / slowest (one run) | 14 / 25 ms | 565 / 1,148 ms |
+
+**Caveats.**
+- 4.26 was fitted on the 67, unlike `Z_STRONG` and the coverage floor, which are margins above
+  a measured case. The held-back part has only 15 `STRONG` verdicts before the change
+  and 12 after. Fresh questions are the
+  real test.
+- The model was trained on English. On the 17 questions about non-English notes it still
+  helped, but less: wrong `STRONG`s 7 -> 4, against 18 -> 4 on the rest. 17 questions is too few
+  to conclude more.
+- 35 of the 60 answerable questions read `MODERATE`. This change doesn't fix that.
+- No question reaches `WEAK` yet.
+- Search is about 40 times slower. That's fine for an agent waiting on a tool call, and it
+  undoes the "milliseconds" claim in the README.
+
+**Decision.** Decided by the maintainer on 2026-10-14: use the 0.12 GB model, which keeps
+every right `STRONG`, rather than the 0.08 GB one (29 right, 15 wrong). Results that can be
+trusted matter more to him than speed.

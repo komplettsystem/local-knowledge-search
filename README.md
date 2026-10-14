@@ -5,7 +5,8 @@
 A small, self-contained hybrid (BM25 + vector) search engine over a folder of
 markdown files, exposed as an MCP server. No Docker, no database, no LLM
 calls and no network calls at query time — everything runs in one local
-Python process, in single-digit milliseconds per query.
+Python process, in well under a second per query (about 15 ms with the
+reranker turned off).
 
 ## Why this exists
 
@@ -16,7 +17,8 @@ multiple times per search (query expansion, then per-chunk relevance
 classification) to rank results — measured at 10–60+ seconds per query
 depending on provider. For a modest, mostly-static folder of notes, that
 LLM-based reranking is unnecessary: classic BM25 + embedding similarity,
-combined with reciprocal rank fusion, gets comparably relevant results
+combined with reciprocal rank fusion and reordered by a small local
+cross-encoder (no LLM, no network), gets comparably relevant results
 without any of it. This tool returns raw ranked chunks; reading them and
 writing the actual answer is left entirely to whichever Claude session calls
 it — the same way it would use any other search tool.
@@ -106,6 +108,21 @@ with `coverage >= 45%`, or `coverage >= 60%` alone), `WEAK` requires both signal
 the corpus-absent-terms gate above), and everything in between is reported
 as `MODERATE` ("ambiguous — read the chunk yourself") rather than forced
 toward a confident-sounding verdict the numbers don't actually support.
+With the reranker on, `STRONG` also needs the reranker's score for the first
+chunk to reach 4.26, and then means the first chunk very likely holds the
+answer, at least partly. On a 103-question test set this cut wrong `STRONG`
+verdicts from 25 to 8 without losing a right one; the threshold was fitted on
+part of that set, so treat it as provisional.
+
+**Reranking** (`server.py`, unlike the signals above, adds a fitted constant
+and latency): the fused top 20 chunks are scored by a small local
+cross-encoder (`Xenova/ms-marco-MiniLM-L-12-v2`, 0.12 GB, via fastembed),
+which reads the query and each chunk together. The `top_k` chunks returned
+are the 20 reordered by that score, so a chunk in the fused top 8 can drop
+out, and all three verdict tiers are computed on the returned set. z and
+coverage say whether a chunk is about the query's topic; the reranker is
+better at telling whether it holds the answer. Set `LKS_RERANK_MODEL=off` to
+turn it off. See `docs/relevance-signal-followup.md`, "Reranker".
 Any corpus-absent query term also caps the header at `MODERATE`, even below
 the 58%-style gate: a query whose one distinctive word is missing can still
 match its ordinary words somewhere, well above background (see
@@ -211,7 +228,8 @@ corpus)
 | Cold index build (with model download) | ~220s (one-time) |
 | Incremental re-index, no changes | ~0.2s |
 | Incremental re-index, a few changed files | <1s |
-| Query (index already loaded) | ~5.5ms warm median, both before and after adding relevance signals |
+| Query (index already loaded, 357 files) | ~5.5ms warm median, both before and after adding relevance signals |
+| Query with the reranker (2026-10-14, ~520 files / ~6,000 chunks, one run of 103 queries) | ~565ms median, ~1.1s slowest; 14ms with `LKS_RERANK_MODEL=off` |
 
 For comparison, the same corpus through Onyx's LLM-based reranking pipeline
 measured 10–60+ seconds per query, depending on which LLM provider backed
@@ -223,7 +241,8 @@ the reranking step.
 - No connectors (Slack, Confluence, GitHub, etc.) — markdown files on disk
   only. If you need those, use a real retrieval platform (Onyx, Glean, etc.)
   instead; this tool intentionally does not try to replace that.
-- Relevance quality depends entirely on BM25 + a small embedding model — no
-  LLM-based reranking. For a large or heterogeneous corpus this may rank
-  worse than an LLM-reranked pipeline; it was built for a personal-notes-scale
-  corpus where that trade-off is worth the 1000x+ latency improvement.
+- Relevance quality depends on BM25, a small embedding model and a small
+  cross-encoder, with no LLM-based reranking. For a large or heterogeneous
+  corpus this may rank worse than an LLM-reranked pipeline; it was built for a
+  personal-notes-scale corpus, where that trade-off is worth the much lower
+  latency. The cross-encoder was trained on English text.
