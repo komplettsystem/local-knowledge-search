@@ -220,6 +220,8 @@ shell step:
 cd /absolute/path/to/local-knowledge-search && ./venv/bin/python3 build_index.py
 ```
 
+A running search server reloads the index on the next query after `build_index.py` has rewritten it, so a restart is not needed (the embedding and rerank models stay loaded; the reload takes about a third of a second at 6,900 chunks). If a rebuild is caught half-written, that one query fails with an error and the loaded index stays in place.
+
 ## Performance (measured against a 357-file / 3,700-chunk personal notes
 corpus)
 

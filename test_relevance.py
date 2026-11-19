@@ -116,6 +116,46 @@ def test_exclude_conf_skips_listed_folders():
         assert lib.load_excludes(Path(d) / "missing.conf") == []
 
 
+def _write_index(d, n):
+    """A tiny index of n chunks, written the way build_index.py writes it: embeddings first, records last."""
+    import json
+    import numpy as np
+    np.save(Path(d) / "embeddings.npy", np.ones((n, 4), dtype=np.float32))
+    records = [{"path": f"p{i}.md", "chunk_index": 0, "text": f"chunk number {i}", "hash": str(i)} for i in range(n)]
+    (Path(d) / "records.json").write_text(json.dumps(records))
+
+
+def test_running_server_picks_up_a_rebuilt_index():
+    # A server started before build_index.py ran must serve the new index on the next query,
+    # without a restart: a note written after startup was invisible to search until then.
+    old = (server.INDEX_DIR, lib.INDEX_DIR, dict(server._state))
+    with tempfile.TemporaryDirectory() as d:
+        server.INDEX_DIR = lib.INDEX_DIR = Path(d)
+        server._state.clear()
+        try:
+            _write_index(d, 2)
+            server._refresh_index()
+            assert len(server._state["records"]) == 2
+            _write_index(d, 3)
+            os.utime(Path(d) / "records.json", (1, 1))  # a rebuild changes the file's timestamp
+            server._refresh_index()
+            assert len(server._state["records"]) == 3, "the rebuilt index was not loaded"
+            assert server._state["embeddings"].shape[0] == 3
+            # a rebuild caught half-written fails loudly and leaves the loaded index in place
+            (Path(d) / "records.json").write_text("[{")
+            os.utime(Path(d) / "records.json", (2, 2))
+            try:
+                server._refresh_index()
+                raise AssertionError("a half-written index must raise, not be served")
+            except ValueError:
+                pass
+            assert len(server._state["records"]) == 3
+        finally:
+            server.INDEX_DIR, lib.INDEX_DIR = old[0], old[1]
+            server._state.clear()
+            server._state.update(old[2])
+
+
 def test_live_index_confirmed_miss_is_weak():
     miss_query, absent, hit_query = _env("LKS_MISS_QUERY", "LKS_MISS_ABSENT_TERMS", "LKS_HIT_QUERY")
     server._load_index()
@@ -162,6 +202,7 @@ if __name__ == "__main__":
         test_verdict_rerank_gate_caps_strong,
         test_apply_rerank_reorders_and_cuts,
         test_exclude_conf_skips_listed_folders,
+        test_running_server_picks_up_a_rebuilt_index,
         test_live_index_confirmed_miss_is_weak,
         test_z_and_coverage_best_are_independent_maxima,
     ]
