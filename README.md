@@ -222,6 +222,8 @@ cd /absolute/path/to/local-knowledge-search && ./venv/bin/python3 build_index.py
 
 A running search server reloads the index on the next query after `build_index.py` has rewritten it, so a restart is not needed (the embedding and rerank models stay loaded; the reload takes about a third of a second at 6,900 chunks). If a rebuild is caught half-written, that one query fails with an error and the loaded index stays in place.
 
+To serve several indexes as one corpus, set `LOCAL_SEARCH_INDEX_DIRS` to a list of index folders separated like `PATH` (`:` on macOS and Linux). The server joins their chunks in that order and builds one set of search statistics over the whole, so results are the same as one index built from all the files together. Each folder is built separately with `build_index.py` (its own `LOCAL_SEARCH_CONTENT_ROOT` and `LOCAL_SEARCH_INDEX_DIR`), which lets a project's index be shared by several search scopes instead of copied into each. When the variable is unset, the single `LOCAL_SEARCH_INDEX_DIR` (default `index/`) is served as before.
+
 ## Performance (measured against a 357-file / 3,700-chunk personal notes
 corpus)
 

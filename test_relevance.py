@@ -156,6 +156,48 @@ def test_running_server_picks_up_a_rebuilt_index():
             server._state.update(old[2])
 
 
+def test_server_composes_several_index_folders_into_one():
+    # A scope is a list of per-project index folders; the server serves their union as one corpus,
+    # in the order given, and notices when any one of them is rebuilt.
+    import json
+    import numpy as np
+    old = (server.INDEX_DIR, lib.INDEX_DIR, dict(server._state), os.environ.get("LOCAL_SEARCH_INDEX_DIRS"))
+    with tempfile.TemporaryDirectory() as d:
+        a, b = Path(d) / "a", Path(d) / "b"
+        a.mkdir()
+        b.mkdir()
+        _write_index(a, 2)
+        _write_index(b, 3)
+        os.environ["LOCAL_SEARCH_INDEX_DIRS"] = os.pathsep.join([str(b), str(a)])
+        server._state.clear()
+        try:
+            server._refresh_index()
+            assert len(server._state["records"]) == 5
+            assert server._state["embeddings"].shape[0] == 5
+            assert [r["path"] for r in server._state["records"]][:3] == ["p0.md", "p1.md", "p2.md"], "folders must be joined in the order given"
+            _write_index(a, 4)
+            os.utime(a / "records.json", (1, 1))
+            server._refresh_index()
+            assert len(server._state["records"]) == 7, "a rebuild of one folder must be picked up"
+            # a folder whose embeddings and records disagree (caught mid-rebuild) must not be served
+            np.save(b / "embeddings.npy", np.ones((9, 4), dtype=np.float32))
+            os.utime(b / "records.json", (2, 2))
+            try:
+                server._refresh_index()
+                raise AssertionError("mismatched records and embeddings must raise")
+            except RuntimeError:
+                pass
+            assert len(server._state["records"]) == 7
+        finally:
+            server.INDEX_DIR, lib.INDEX_DIR = old[0], old[1]
+            server._state.clear()
+            server._state.update(old[2])
+            if old[3] is None:
+                os.environ.pop("LOCAL_SEARCH_INDEX_DIRS", None)
+            else:
+                os.environ["LOCAL_SEARCH_INDEX_DIRS"] = old[3]
+
+
 def test_live_index_confirmed_miss_is_weak():
     miss_query, absent, hit_query = _env("LKS_MISS_QUERY", "LKS_MISS_ABSENT_TERMS", "LKS_HIT_QUERY")
     server._load_index()
@@ -203,6 +245,7 @@ if __name__ == "__main__":
         test_apply_rerank_reorders_and_cuts,
         test_exclude_conf_skips_listed_folders,
         test_running_server_picks_up_a_rebuilt_index,
+        test_server_composes_several_index_folders_into_one,
         test_live_index_confirmed_miss_is_weak,
         test_z_and_coverage_best_are_independent_maxima,
     ]

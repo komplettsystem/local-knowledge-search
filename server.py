@@ -4,6 +4,7 @@ no LLM calls, no network calls, no Docker. Rebuild the index with
 build_index.py after the mirror changes; this process serves queries
 against the index on disk and reloads it when build_index.py has rewritten it.
 """
+import json
 import os
 import sys
 from pathlib import Path
@@ -14,7 +15,7 @@ import numpy as np
 from fastembed import TextEmbedding
 from mcp.server.fastmcp import FastMCP
 
-from lib import load_json, tokenize, BM25, INDEX_DIR
+from lib import tokenize, BM25, INDEX_DIR
 
 RRF_K = 60
 TOP_N_PER_METHOD = 30
@@ -81,21 +82,34 @@ mcp = FastMCP("local-knowledge-search")
 _state: dict = {}
 
 
+def _index_dirs():
+    """The index folders to serve: those in LOCAL_SEARCH_INDEX_DIRS (separated like PATH, joined in
+    that order) when it is set, else the one INDEX_DIR. One folder per project lets a search scope be
+    a list of projects without keeping a copy of their chunks per scope."""
+    raw = os.environ.get("LOCAL_SEARCH_INDEX_DIRS", "")
+    return [Path(p) for p in raw.split(os.pathsep) if p] or [INDEX_DIR]
+
+
 def _index_signature():
-    st = (INDEX_DIR / "records.json").stat()
-    return (st.st_mtime_ns, st.st_size)
+    stats = [(d / "records.json").stat() for d in _index_dirs()]
+    return tuple((st.st_mtime_ns, st.st_size) for st in stats)
 
 
 def _read_index():
-    records = load_json("records.json")
-    if not records:
-        raise RuntimeError(
-            "No index found. Run build_index.py first: "
-            "~/.local-search/venv/bin/python3 ~/.local-search/build_index.py"
-        )
-    embeddings = np.load(INDEX_DIR / "embeddings.npy")
-    if len(embeddings) != len(records):
-        raise RuntimeError(f"index is mid-rebuild: {len(records)} records, {len(embeddings)} embeddings")
+    records, parts = [], []
+    for d in _index_dirs():
+        recs = json.loads((d / "records.json").read_text()) if (d / "records.json").exists() else None
+        if not recs:
+            raise RuntimeError(
+                f"No index found in {d}. Run build_index.py first: "
+                "~/.local-search/venv/bin/python3 ~/.local-search/build_index.py"
+            )
+        emb = np.load(d / "embeddings.npy")
+        if len(emb) != len(recs):
+            raise RuntimeError(f"index in {d} is mid-rebuild: {len(recs)} records, {len(emb)} embeddings")
+        records += recs
+        parts.append(emb)
+    embeddings = np.concatenate(parts)
     norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
     norms[norms == 0] = 1.0
     embeddings = embeddings / norms
