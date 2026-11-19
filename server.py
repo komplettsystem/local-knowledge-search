@@ -83,16 +83,25 @@ _state: dict = {}
 
 
 def _index_dirs():
-    """The index folders to serve: those in LOCAL_SEARCH_INDEX_DIRS (separated like PATH, joined in
-    that order) when it is set, else the one INDEX_DIR. One folder per project lets a search scope be
-    a list of projects without keeping a copy of their chunks per scope."""
-    raw = os.environ.get("LOCAL_SEARCH_INDEX_DIRS", "")
-    return [Path(p) for p in raw.split(os.pathsep) if p] or [INDEX_DIR]
+    """The index folders to serve: those in LOCAL_SEARCH_INDEX_DIRS (separated like PATH) plus those
+    listed one per line in the file named by LOCAL_SEARCH_INDEX_DIRS_FILE, joined in that order; else
+    the one INDEX_DIR. One folder per project lets a search scope be a list of projects without a copy
+    of their chunks per scope. A list file is read on every query, so a project added to the scope later
+    is picked up without editing the server's config; an empty one raises instead of falling back to
+    the default index, which the scope may not be meant to see."""
+    names = [p for p in os.environ.get("LOCAL_SEARCH_INDEX_DIRS", "").split(os.pathsep) if p]
+    listing = os.environ.get("LOCAL_SEARCH_INDEX_DIRS_FILE")
+    if listing:
+        names += [line.strip() for line in Path(listing).read_text().splitlines() if line.strip()]
+        if not names:
+            raise RuntimeError(f"{listing} lists no index folders")
+    return [Path(p) for p in names] or [INDEX_DIR]
 
 
 def _index_signature():
-    stats = [(d / "records.json").stat() for d in _index_dirs()]
-    return tuple((st.st_mtime_ns, st.st_size) for st in stats)
+    dirs = _index_dirs()
+    stats = [(d / "records.json").stat() for d in dirs]
+    return tuple(dirs), tuple((st.st_mtime_ns, st.st_size) for st in stats)
 
 
 def _read_index():

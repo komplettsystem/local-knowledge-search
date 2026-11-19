@@ -224,6 +224,8 @@ A running search server reloads the index on the next query after `build_index.p
 
 To serve several indexes as one corpus, set `LOCAL_SEARCH_INDEX_DIRS` to a list of index folders separated like `PATH` (`:` on macOS and Linux). The server joins their chunks in that order and builds one set of search statistics over the whole, so results are the same as one index built from all the files together. Each folder is built separately with `build_index.py` (its own `LOCAL_SEARCH_CONTENT_ROOT` and `LOCAL_SEARCH_INDEX_DIR`), which lets a project's index be shared by several search scopes instead of copied into each. When the variable is unset, the single `LOCAL_SEARCH_INDEX_DIR` (default `index/`) is served as before.
 
+`LOCAL_SEARCH_INDEX_DIRS_FILE` does the same with a text file that lists one index folder per line. The server reads it on every query, so a folder added to the file is served from the next query on, without editing the server's config. An empty file raises an error instead of falling back to the default index.
+
 ## Performance (measured against a 357-file / 3,700-chunk personal notes
 corpus)
 

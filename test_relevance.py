@@ -198,6 +198,47 @@ def test_server_composes_several_index_folders_into_one():
                 os.environ["LOCAL_SEARCH_INDEX_DIRS"] = old[3]
 
 
+def test_server_follows_a_file_that_lists_the_index_folders():
+    # A search scope's config can name a list file instead of the folders themselves, so a project
+    # added to the scope later is picked up without editing the config. An empty list must not fall
+    # back to the default index: that would serve a corpus the scope is not meant to see.
+    old = (server.INDEX_DIR, lib.INDEX_DIR, dict(server._state),
+           os.environ.get("LOCAL_SEARCH_INDEX_DIRS"), os.environ.get("LOCAL_SEARCH_INDEX_DIRS_FILE"))
+    with tempfile.TemporaryDirectory() as d:
+        a, b = Path(d) / "a", Path(d) / "b"
+        a.mkdir()
+        b.mkdir()
+        _write_index(a, 2)
+        _write_index(b, 3)
+        listing = Path(d) / "global.dirs"
+        listing.write_text(f"{a}\n")
+        os.environ.pop("LOCAL_SEARCH_INDEX_DIRS", None)
+        os.environ["LOCAL_SEARCH_INDEX_DIRS_FILE"] = str(listing)
+        server._state.clear()
+        try:
+            server._refresh_index()
+            assert len(server._state["records"]) == 2
+            listing.write_text(f"{a}\n{b}\n")
+            server._refresh_index()
+            assert len(server._state["records"]) == 5, "a folder added to the list file must be picked up"
+            listing.write_text("\n")
+            try:
+                server._refresh_index()
+                raise AssertionError("an empty list must raise, not fall back to the default index")
+            except RuntimeError:
+                pass
+            assert len(server._state["records"]) == 5
+        finally:
+            server.INDEX_DIR, lib.INDEX_DIR = old[0], old[1]
+            server._state.clear()
+            server._state.update(old[2])
+            for name, value in (("LOCAL_SEARCH_INDEX_DIRS", old[3]), ("LOCAL_SEARCH_INDEX_DIRS_FILE", old[4])):
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
+
 def test_live_index_confirmed_miss_is_weak():
     miss_query, absent, hit_query = _env("LKS_MISS_QUERY", "LKS_MISS_ABSENT_TERMS", "LKS_HIT_QUERY")
     server._load_index()
@@ -246,6 +287,7 @@ if __name__ == "__main__":
         test_exclude_conf_skips_listed_folders,
         test_running_server_picks_up_a_rebuilt_index,
         test_server_composes_several_index_folders_into_one,
+        test_server_follows_a_file_that_lists_the_index_folders,
         test_live_index_confirmed_miss_is_weak,
         test_z_and_coverage_best_are_independent_maxima,
     ]
